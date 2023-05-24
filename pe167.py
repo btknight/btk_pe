@@ -16,43 +16,89 @@ Find ∑ U(2,2n+1)k for 2 ≤ n ≤10, where k = 10^11.
 """
 
 
-from itertools import combinations
-from functools import lru_cache
-from collections import defaultdict
-from typing import Set, List
+from itertools import combinations, product
+from collections import defaultdict, namedtuple
+from typing import Dict
+from datetime import datetime, timedelta
 import sys
 
 
+COMPUTE_UPDATE_FREQ = 10
+UlamParm = namedtuple('UlamParm', ['diff', 'period'])
 max_j = 1
+ulam_parms: Dict[int, UlamParm] = {
+    5: UlamParm(126, 32),
+    7: UlamParm(126, 26),
+    9: UlamParm(1778, 444),
+    11: UlamParm(6510, 1628),
+    13: UlamParm(23622, 5906),
+    15: UlamParm(510, 80),
+    17: UlamParm(507842, 126960),
+    19: UlamParm(1523526, 380882),
+    21: UlamParm(8388606, 2097152),
+    23: UlamParm(4194302, 1047588),
+}
 
 
-def find_next_ulam_sum(seq: List[int]) -> int:
-    combo_sums = sorted([i + j for i, j in combinations(seq, 2) if i + j > seq[-1]])
-    while combo_sums[0] == combo_sums[1]:
-        invalid_sum = combo_sums[0]
-        while combo_sums[0] == invalid_sum:
-            combo_sums.pop(0)
-    return combo_sums[0]
+def zero():
+    return 0
 
 
-def ulam(v: int):
+def ulam_2u(v: int):
+    diff, period = ulam_parms[v]
+    if v % 2 == 0 or v < 5:
+        raise ValueError(f'v must be an odd number 5 or larger')
     ulam_seq = [2, v, 2 + v]
-    for i in range(0, 3):
-        yield ulam_seq[i]
-    i = 3
-    while True:
-        next_term = find_next_ulam_sum(ulam_seq)
-        ulam_seq.append(next_term)
-        yield next_term
+    ulam_seq_periodic = []
+    def ulam_compute(i: int):
+        nonlocal ulam_seq, ulam_seq_periodic
+        td = timedelta(seconds=COMPUTE_UPDATE_FREQ)
+        next_update = datetime.now() + td
+        while i >= len(ulam_seq):
+            sum_d: Dict[int, int] = defaultdict(zero)
+            for a, b in combinations(ulam_seq, 2):
+                if a + b > ulam_seq[-1]:
+                    sum_d[a + b] += 1
+            new_val = min([k for k, val in sum_d.items() if val == 1])
+            ulam_seq.append(new_val)
+            if next_update < datetime.now():
+                print(f'  Compute: {len(ulam_seq)} / {i}')
+                next_update = datetime.now() + td
+        ulam_seq_periodic = ulam_seq[6:]
+
+    def ulam_term(k: int):
+        nonlocal ulam_seq, v
+        k_pd = k - 7
+        if k < 1:
+            raise ValueError(f'k must be a positive integer greater than 0: {k}')
+        if k_pd < period:
+            ulam_compute(k - 1)
+            return ulam_seq[k - 1]
+        else:
+            ulam_compute((k_pd % period) + 7)
+            periodic_product = (k_pd // period) * diff
+            seq_add = ulam_seq_periodic[k_pd % period]
+            retval = periodic_product + seq_add
+            return retval
+    return ulam_term
 
 
 def main():
+    sum = 0
     i = 0
-    for a in ulam(2, 5):
-        i += 1
-        print(f'{i}: {a}')
-        if i == 10000:
-            sys.exit()
+    for n in range(2, 11):
+        print(f'Ulam(2, {2 * n + 1})')
+        v = 2 * n + 1
+        diff, period = ulam_parms[v]
+        print(f'  diff = {diff}, period = {period}')
+        print(f'  Need up to {(10**11 - 7) % period} computes in Ulam seq')
+        ulam_term = ulam_2u(v)
+        for i in range(1, 51):
+            print(f'  {i} = {ulam_term(i)}')
+        #val = ulam_term(10**11)
+        #print(f'  U(2, {v})[10**11] = {val}')
+        #sum += val
+    print(f'sum = {sum}')
 
 
 if __name__ == '__main__':
