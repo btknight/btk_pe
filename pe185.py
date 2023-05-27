@@ -45,7 +45,9 @@ Find the unique 16-digit secret sequence.
 """
 
 
-from itertools import product
+from collections import defaultdict
+from itertools import cycle
+from functools import reduce
 import re
 from pprint import pprint
 from time import time
@@ -55,37 +57,144 @@ DIGIT_LEN = 16
 
 def gen_possible_nums(guess_l):
     possible_num_l = []
+    for j in range(0, len(guess_l[0][0])):
+        def zero():
+            return 0
+        possible_num_l.append(defaultdict(zero))
     # Me fail English? That's unpossible!
-    unpossible_num_l = [v for v, c in guess_l if c == 0]
-    for i in range(0, DIGIT_LEN):
-        unpossible_digit_l = [v[i] for v in unpossible_num_l]
-        digits = ''
-        for digit in [str(i) for i in range(1 if i == 0 else 0, 10) if str(i) not in unpossible_digit_l]:
-            digits += digit
-        possible_num_l.append(digits)
-    def product_as_str():
-        p = product(*possible_num_l[:])
-        for digit_t in p:
-            digits = ''
-            for digit in digit_t:
-                digits += digit
-            yield digits
-    return product_as_str()
+    for guess, count in sorted(guess_l, key=lambda x: -x[1]):
+        for i in range(0, len(guess)):
+            digit = guess[i]
+            if count == 0:
+                del possible_num_l[i][digit]
+            else:
+                possible_num_l[i][digit] += 1
+    digits_to_try_l = []
+    for j in range(0, len(guess_l[0][0])):
+        digits_to_try_l.append([])
+        for digit, occ_n in sorted(possible_num_l[j].items(), key=lambda x: -x[1]):
+            digits_to_try_l[j].append(digit)
+    return digits_to_try_l
 
 
-def digits_match_guesses(digits, nz_guess_l):
-    for v, c in nz_guess_l:
-        if count_matches(digits, v) != c:
-            return False
-    return True
+class BitmappedCounter(object):
+    def __init__(self, bitmap, repeat=False):
+        self.bitmap = bitmap
+        self.repeat = repeat
+        if repeat:
+            self.counter = cycle(range(0, 2**self.bitlen))
+        else:
+            self.counter = (i for i in range(0, 2**self.bitlen))
+
+    @property
+    def bitlen(self):
+        bitlen = 0
+        bitmap = self.bitmap
+        while bitmap > 0:
+            if bitmap % 2 == 1:
+                bitlen += 1
+            bitmap >>= 1
+        return bitlen
+
+    def map_counter_to_bitmap(self, ctr):
+        mapped_ctr = 0
+        bit_pos = []
+        bitmap = self.bitmap
+        i = 0
+        while bitmap > 0:
+            if bitmap % 2 == 1:
+                bit_pos.append(i)
+            bitmap >>= 1
+            i += 1
+        for i in bit_pos:
+            mapped_ctr += (ctr % 2) * 2**i
+            ctr >>= 1
+        return mapped_ctr
+
+    def __iter__(self):
+        self.counter = (i for i in range(0, 2**self.bitlen))
+        return self
+
+    def __next__(self):
+        return self.map_counter_to_bitmap(next(self.counter))
 
 
-def count_matches(digits, guess):
-    matches = 0
-    for i in range(len(digits)):
-        if digits[i] == guess[i]:
-            matches += 1
-    return matches
+class BMCounterList(object):
+    def __init__(self, bitmap_m, length):
+        self.length = length
+        self.bitmap_m = bitmap_m
+        self._init_ctrs()
+
+    def _init_ctrs(self):
+        self.ctr_m = []
+        self.initial_sent = False
+        for i in range(0, len(self.bitmap_m)):
+            repeat = i + 1 < len(self.bitmap_m)
+            self.ctr_m.append(BitmappedCounter(self.bitmap_m[i], repeat=repeat))
+        self.counter_l = [next(bmc) for bmc in self.ctr_m]
+        self.counter_l.insert(0, 2 ** self.length - 1)
+
+    def __iter__(self):
+        self._init_ctrs()
+        return self
+
+    def __next__(self):
+        if self.initial_sent:
+            self.increment()
+        else:
+            self.initial_sent = True
+        return self.counter_l.copy()
+
+    def increment(self, i: int = 0):
+        ctr_val = None
+        if i > 0:
+            def is_masked_by_next_val(ctr_val):
+                if i + 1 == len(self.counter_l):
+                    return False
+                return reduce(lambda x, y: x | y, self.counter_l[i + 1:]) & ctr_val > 0
+
+            while ctr_val is None or is_masked_by_next_val(ctr_val):
+                ctr_val = next(self.ctr_m[i - 1])
+                if ctr_val == 0 and i + 1 < len(self.ctr_m):
+                    self.increment(i + 1)
+        else:
+            self.increment(i + 1)
+            ctr_val = (2 ** self.length - 1) ^ reduce(lambda x, y: x | y, self.counter_l[i + 1:])
+        self.counter_l[i] = ctr_val
+
+
+def combinator(guess_m):
+    pos_m = []
+    for j in range(0, len(guess_m)):
+        pos_m.append((0, len(guess_m[j])))
+    bitmap_m = []
+    for i in range(1, max([x[1] for x in pos_m])):
+        bitmap = 0
+        for start, end in pos_m:
+            bitmap <<= 1
+            if start <= i < end:
+                bitmap += 1
+        bitmap_m.append(bitmap)
+    bmcl = BMCounterList(bitmap_m, len(pos_m))
+    while True:
+        bitmap_counter_l = next(bmcl)
+        guess = ''
+        for i in range(len(guess_m) - 1, -1, -1):
+            for k in range(0, len(bitmap_counter_l)):
+                if bitmap_counter_l[k] % 2 == 1:
+                    guess = guess_m[i][k] + guess
+                bitmap_counter_l[k] >>= 1
+        yield guess
+
+
+def num_matches(str1, str2):
+    if len(str1) != len(str2):
+        raise ValueError(f'str1 and str2 not same length')
+    c = 0
+    for i in range(len(str1)):
+        if str1[i] == str2[i]:
+            c += 1
+    return c
 
 
 def main():
@@ -96,11 +205,17 @@ def main():
             guess = (guess_m.group(1), int(guess_m.group(2)))
             guess_l.append(guess)
     pprint(guess_l)
-    nz_guess_l = [(v, c) for v, c in guess_l if c > 0]
-    product = gen_possible_nums(guess_l)
-    for n in product:
-        if digits_match_guesses(n, nz_guess_l):
-            print(f'Found match: {n}')
+    guess_m = gen_possible_nums(guess_l)
+    pprint(guess_m)
+    combos = 1
+    for row in guess_m:
+        combos *= len(row)
+    print(f'Combinations: {combos}')
+    cmb = combinator(guess_m)
+    while True:
+        gen_guess = next(cmb)
+        if all([num_matches(gen_guess, g) == c for g, c in guess_l if c > 0]):
+            print(f'Found the value: {gen_guess}')
             return
 
 
