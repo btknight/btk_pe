@@ -2,7 +2,7 @@
 import numpy
 
 
-def primesfrom2to(n):
+def primes_from_2_to(n: int) -> numpy.array:
     """ Input n>=6, Returns a array of primes, 2 <= p < n """
     sieve = numpy.ones(n//3 + (n%6==2), dtype=bool)
     for i in range(1,int(n**0.5)//3+1):

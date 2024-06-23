@@ -1,13 +1,13 @@
 from itertools import count
 from numpy import power
-from primes import primesfrom2to
+from primes import primes_from_2_to
 from typing import Set
 import logging
 
 
 MAXDIGITS = 6
 lendigits = MAXDIGITS
-primes = frozenset(primesfrom2to(power(10, MAXDIGITS + 1) - 1))
+primes = frozenset(primes_from_2_to(power(10, MAXDIGITS + 1) - 1))
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
 
