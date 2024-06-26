@@ -1,3 +1,4 @@
+from time import perf_counter
 from math import log2
 from sympy import totient
 
@@ -20,8 +21,11 @@ def find_tet(base: int, tetronent: int, mod: int) -> int:
 def main():
     base = 1777
     tetronent = 1855
+    t0 = perf_counter()
     n = find_tet(base, tetronent, 10**8)
+    tf = perf_counter()
     print('Result:', n)
+    print('Time taken:', tf - t0)
 
 
 if __name__ == '__main__':
